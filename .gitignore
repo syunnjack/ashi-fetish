@@ -1,0 +1,16 @@
+node_modules
+scripts/.cache/
+__pycache__/
+*.pyc
+
+# ページはビルド時に生成する。元になるデータだけを commit する。
+public/index.html
+public/performer/
+public/all/
+public/about/
+public/pantyhose/
+public/sole/
+public/socks/
+public/assets/
+public/sitemap.xml
+public/robots.txt
