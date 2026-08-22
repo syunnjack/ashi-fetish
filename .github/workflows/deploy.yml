@@ -26,6 +26,11 @@ jobs:
       # ページは public/data/performers.json から作る。
       # CSVの取り直しは refresh-data.yml のほう。
       - run: node scripts/build-site.mjs
+
+      # Pages の設定を取りに行く手順。これが無いと、配信の設定が
+      # 「GitHub Actions」になっていない場合に deploy-pages が失敗する。
+      - uses: actions/configure-pages@v5
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: public
