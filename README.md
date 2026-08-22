@@ -45,14 +45,38 @@ DUGA ウェブサービスの規約で、指定のクレジットの表示が義
 アプリケーションIDの申請内容と違うURLでの表示も認められていないため、
 このドメインを使うなら申請内容に追加すること。
 
+## 2つの出典を組み合わせている
+
+| 出典 | 取れるもの | 認証 |
+|---|---|---|
+| 作品データCSV | 作品数・カテゴリ・公開日・レーベル・商品ID | 不要 |
+| ウェブサービス（API） | **読み仮名・出演者ID・評価・マイリスト数・シリーズ** | appid が要る |
+
+読み仮名はCSVに無く、APIからしか取れない。これがあるので五十音索引が作れる。
+評価とマイリスト数は DUGA が公表している実数で、当サイトの集計ではない。
+
+APIは全商品を巡回する必要がなく、カテゴリで絞れば2,178件で済む。
+
+| カテゴリ | category | 件数 |
+|---|---|---|
+| 足裏 | 1302 | 483 |
+| パンスト | 100015 | 1,544 |
+| ソックス | 100014 | 151 |
+
+**APIのレスポンスは、要素が1つでも配列で返る**（`review` `mylist` `series` `ranking`）。
+`[{"rating":"4.3"}]` の形。辞書として読むと落ちる。
+数値も「2,473」のように桁区切りが入ることがある。
+
 ## データの作り直し
 
 ```
-python scripts/build-data.py public/data/performers.json   # CSVから抽出
-node   scripts/build-site.mjs                              # ページ生成
+python scripts/build-data.py public/data/performers.json          # CSVから抽出
+DUGA_APP_ID=xxx python scripts/fetch-api-details.py public/data/api-details.json
+node   scripts/build-site.mjs                                     # ページ生成
 ```
 
 - CSV は https://duga.jp/productcsv/（認証不要・毎日12:30と18:30に更新）
+- API の appid はこのサイト専用のもの（アプリ名 `ashi-fetish`）を使う
 - 生成したページは `.gitignore` に入れてある。commit するのは
   `public/data/performers.json` だけ
 - 取り直しは `refresh-data.yml`（週1回）

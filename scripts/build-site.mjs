@@ -27,6 +27,28 @@ const DUGA_AGENT_ID = process.env.DUGA_AGENT_ID || '21786'
 // 「ソースや画像の改変はできません」とされているため、そのままの形で出す。
 const DUGA_CREDIT = `<a href="https://click.duga.jp/aff/api/${DUGA_AGENT_ID}-01" target="_blank">Powered by DUGAウェブサービス</a>`
 
+// 五十音の見出しと、そこに入れる読みの頭文字。濁音・半濁音は清音にまとめる。
+const KANA_ROWS = [
+  ['あ', [['あ', 'あ'], ['い', 'い'], ['う', 'うゔ'], ['え', 'え'], ['お', 'お']]],
+  ['か', [['か', 'かが'], ['き', 'きぎ'], ['く', 'くぐ'], ['け', 'けげ'], ['こ', 'こご']]],
+  ['さ', [['さ', 'さざ'], ['し', 'しじ'], ['す', 'すず'], ['せ', 'せぜ'], ['そ', 'そぞ']]],
+  ['た', [['た', 'ただ'], ['ち', 'ちぢ'], ['つ', 'つづっ'], ['て', 'てで'], ['と', 'とど']]],
+  ['な', [['な', 'な'], ['に', 'に'], ['ぬ', 'ぬ'], ['ね', 'ね'], ['の', 'の']]],
+  ['は', [['は', 'はばぱ'], ['ひ', 'ひびぴ'], ['ふ', 'ふぶぷ'], ['へ', 'へべぺ'], ['ほ', 'ほぼぽ']]],
+  ['ま', [['ま', 'ま'], ['み', 'み'], ['む', 'む'], ['め', 'め'], ['も', 'も']]],
+  ['や', [['や', 'やゃ'], ['ゆ', 'ゆゅ'], ['よ', 'よょ']]],
+  ['ら', [['ら', 'ら'], ['り', 'り'], ['る', 'る'], ['れ', 'れ'], ['ろ', 'ろ']]],
+  ['わ', [['わ', 'わゎ'], ['を', 'を'], ['ん', 'ん']]],
+]
+
+const KANA_OF = new Map(
+  KANA_ROWS.flatMap(([, initials]) => initials.flatMap(([head, members]) => [...members].map((c) => [c, head])))
+)
+
+function kanaHead(reading) {
+  return KANA_OF.get(String(reading || '').charAt(0)) ?? 'その他'
+}
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replaceAll('&', '&amp;')
@@ -82,7 +104,7 @@ function shell({ title, description, canonical, crumbs, body }) {
       <footer>
         <p class="adult">このサイトは18歳未満の方に向けたものではありません。</p>
         <p>掲載内容の訂正・削除のご依頼は <a href="mailto:${CONTACT}">${CONTACT}</a> へご連絡ください。確認のうえ対応します。</p>
-        <p><a href="/">トップ</a> ・ <a href="/about/">このサイトについて</a> ・ <a href="${PROFILE_SITE}">出演者のプロフィールは この子だれ？</a></p>
+        <p><a href="/">トップ</a> ・ <a href="/kana/">五十音索引</a> ・ <a href="/about/">このサイトについて</a> ・ <a href="${PROFILE_SITE}">出演者のプロフィールは この子だれ？</a></p>
         <p class="credit">${DUGA_CREDIT}</p>
       </footer>
     </div>
@@ -115,6 +137,16 @@ function renderPerson(person, categories) {
     ['収録の範囲', `${monthLabel(person.firstOpenedOn)} 〜 ${monthLabel(person.lastOpenedOn)}`],
   ]
 
+  if (person.reading) rows.splice(0, 0, ['読み', escapeHtml(person.reading)])
+
+  // 評価とマイリスト数は DUGA が公表している実数。当サイトの集計ではない。
+  if (person.rating) {
+    rows.push(['DUGAでの評価', `${person.rating} / 5（${person.ratedWorks}作品の平均）`])
+  }
+  if (person.mylist) {
+    rows.push(['マイリスト登録', `${person.mylist.toLocaleString('ja-JP')}件`])
+  }
+  if (person.series?.length) rows.push(['主なシリーズ', escapeHtml(person.series.join('、'))])
   if (person.labels.length) rows.push(['主なレーベル', escapeHtml(person.labels.join('、'))])
 
   const table = `<table class="profile"><tbody>${rows
@@ -227,6 +259,61 @@ function renderAll(people) {
   })
 }
 
+function renderKanaIndex(groups, total) {
+  const rows = KANA_ROWS.map(([row, initials]) => {
+    const links = initials
+      .filter(([head]) => groups.get(head)?.length)
+      .map(([head]) => `<a class="chip" href="/kana/${encodeURIComponent(head)}/">${escapeHtml(head)} ${groups.get(head).length}人</a>`)
+      .join('')
+    return links ? `<section><h2>${escapeHtml(row)}行</h2><p>${links}</p></section>` : ''
+  }).join('')
+
+  const others = groups.get('その他')?.length
+    ? `<section><h2>その他</h2><p><a class="chip" href="/kana/${encodeURIComponent('その他')}/">その他 ${groups.get('その他').length}人</a></p></section>`
+    : ''
+
+  const description = `読み仮名が分かっている${total.toLocaleString('ja-JP')}人を、頭文字ごとに並べています。`
+
+  return shell({
+    title: `五十音索引｜${SITE_NAME}`,
+    description,
+    canonical: `${SITE_URL}/kana/`,
+    crumbs: '五十音索引',
+    body: `
+      <h1>五十音索引</h1>
+      <p class="lead">${escapeHtml(description)}読み仮名は DUGA のウェブサービスから取得しています。</p>
+      ${rows}${others}`,
+  })
+}
+
+function renderKanaPage(head, members, groups) {
+  const nav = [...KANA_ROWS.flatMap(([, i]) => i.map(([h]) => h)), 'その他']
+    .filter((h) => groups.get(h)?.length)
+    .map((h) => h === head
+      ? `<span class="chip current">${escapeHtml(h)}</span>`
+      : `<a class="chip" href="/kana/${encodeURIComponent(h)}/">${escapeHtml(h)}</a>`)
+    .join('')
+
+  const list = members
+    .map((p) => `<li><a href="/performer/${p.slug}/">${escapeHtml(p.name)}<span class="reading-small">${escapeHtml(p.reading || '')}</span></a><span class="count">${p.works}</span></li>`)
+    .join('')
+
+  const label = head === 'その他' ? 'その他の読み' : `${head}から始まる読み`
+  const description = `${label}の出演者${members.length}人の一覧です。`
+
+  return shell({
+    title: `${label}の出演者${members.length}人｜${SITE_NAME}`,
+    description,
+    canonical: `${SITE_URL}/kana/${encodeURIComponent(head)}/`,
+    crumbs: `<a href="/kana/">五十音索引</a> ＞ ${escapeHtml(head)}`,
+    body: `
+      <h1>${escapeHtml(label)}の出演者</h1>
+      <p class="lead">${escapeHtml(description)}</p>
+      <p>${nav}</p>
+      <ul class="name-list">${list}</ul>`,
+  })
+}
+
 function renderAbout(categories, people, confirmedOn) {
   return shell({
     title: `このサイトについて｜${SITE_NAME}`,
@@ -296,6 +383,8 @@ h2 { font-size:18px; margin:30px 0 10px; }
 .profile th, .profile td { text-align:left; padding:11px 14px; border-bottom:1px solid var(--rule); font-size:15px; }
 .profile th { width:9em; color:var(--muted); font-weight:600; }
 .profile tr:last-child th, .profile tr:last-child td { border-bottom:0; }
+.chip.current { background:var(--accent); color:#fff; border-color:var(--accent); }
+.reading-small { display:block; font-size:11px; color:var(--muted); }
 .chip { display:inline-block; border:1px solid var(--rule); border-radius:18px; padding:3px 12px; margin:2px 4px 2px 0; font-size:13px; text-decoration:none; }
 .works { margin:20px 0; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .button { display:inline-block; background:var(--accent); color:#fff; text-decoration:none; padding:11px 20px; border-radius:8px; font-weight:700; font-size:15px; }
@@ -319,6 +408,26 @@ async function main() {
   const data = JSON.parse(await readFile(path.join(publicDir, 'data/performers.json'), 'utf8'))
   const people = data.performers
   const confirmedOn = data.confirmedOn
+
+  // ウェブサービスから取った、CSVに無い項目（読み仮名・評価・マイリスト数・シリーズ）。
+  let details = new Map()
+  try {
+    const file = JSON.parse(await readFile(path.join(publicDir, 'data/api-details.json'), 'utf8'))
+    details = new Map(file.performers.map((p) => [p.name, p]))
+  } catch {
+    console.log('ウェブサービスの結果が無いので、読み仮名や評価は出しません。')
+  }
+
+  for (const person of people) {
+    const found = details.get(person.name)
+    if (!found) continue
+    person.reading = found.reading
+    person.dugaId = found.dugaId
+    person.rating = found.rating
+    person.ratedWorks = found.ratedWorks
+    person.mylist = found.mylist
+    person.series = found.series
+  }
 
   const used = new Set()
   for (const person of people) {
@@ -351,6 +460,29 @@ async function main() {
     await writeFile(path.join(publicDir, dir, 'index.html'), html, 'utf8')
   }
 
+  // 五十音索引。読み仮名はウェブサービスからしか取れないので、
+  // 取れている人だけを載せる。
+  const withReading = people.filter((p) => p.reading)
+  const groups = new Map()
+  for (const person of withReading) {
+    const head = kanaHead(person.reading)
+    if (!groups.has(head)) groups.set(head, [])
+    groups.get(head).push(person)
+  }
+  for (const members of groups.values()) {
+    members.sort((a, b) => a.reading.localeCompare(b.reading, 'ja'))
+  }
+
+  await rm(path.join(publicDir, 'kana'), { recursive: true, force: true })
+  await mkdir(path.join(publicDir, 'kana'), { recursive: true })
+  await writeFile(path.join(publicDir, 'kana/index.html'), renderKanaIndex(groups, withReading.length), 'utf8')
+
+  for (const [head, members] of groups) {
+    const dir = path.join(publicDir, 'kana', head)
+    await mkdir(dir, { recursive: true })
+    await writeFile(path.join(dir, 'index.html'), renderKanaPage(head, members, groups), 'utf8')
+  }
+
   for (const category of categories) {
     const members = people
       .filter((p) => category.name in p.categories)
@@ -370,7 +502,9 @@ async function main() {
   const urls = [
     `${SITE_URL}/`,
     `${SITE_URL}/all/`,
+    `${SITE_URL}/kana/`,
     `${SITE_URL}/about/`,
+    ...[...groups.keys()].map((h) => `${SITE_URL}/kana/${encodeURIComponent(h)}/`),
     ...categories.map((c) => `${SITE_URL}/${c.slug}/`),
     ...people.map((p) => `${SITE_URL}/performer/${encodeURI(p.slug)}/`),
   ]
